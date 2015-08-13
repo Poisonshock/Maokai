@@ -1,0 +1,422 @@
+
+
+
+
+--Ignite not working, need to work for Version 0.02. 
+--Need to add Precise Ult Calculation                              ---- MAOKAI THE KING OF THE ENTS.
+--Killsteal and More precise autosmite.
+
+if myHero.charName ~= "Maokai" then return end
+
+local version = 0.01
+
+
+if FileExist(LIB_PATH .. "/VPrediction.lua") then require("VPrediction") end
+if VIP_USER and FileExist(LIB_PATH .. "/DivinePred.lua") and FileExist(LIB_PATH.."DivinePred.luac") then require ("DivinePred") end
+
+local Skills = {
+	SkillQ = {range = 600, speed = math.huge, delay = 0.25, width = 100}; -- Speed nil
+	SkillW = {range = 525};
+	SkillE = {range = 1100};
+	SkillR = {range = 475};
+	Smite  = {range = 500};
+	--Ignite = {range = 600};
+}
+
+
+local InRange = false
+local smiteslot = nil
+local LastRequest = 0
+--local IgnDmg = nil
+
+
+local ts = TargetSelector(TARGET_LESS_CAST_PRIORITY, Skills.SkillQ.range, DAMAGE_MAGIC)
+local JungleMinions = minionManager(MINION_JUNGLE, Skills.SkillQ.range, myHero, MINION_SORT_MAXHEALTH_DEC)
+local EnemyMinions = minionManager(MINION_ENEMY, Skills.SkillQ.range, myHero, MINION_SORT_MAXHEALTH_DEC)
+
+
+
+function OnLoad()
+	print("<font color=\"#009900\">Poisonshock's</font> <font color=\"#FFFFFF\">Maokai - King of the Ents" ..version.. "</font>")
+	
+	VP = VPrediction()
+	DP = nil
+	if VIP_USER and FileExist(LIB_PATH .. "/DivinePred.lua") and FileExist(LIB_PATH.."DivinePred.luac") then
+		DP = DivinePred()
+	end
+	
+	-------------------------------------------
+	
+	--------------------------------------------
+
+	Config = scriptConfig("Maokai Ent", "MaokaiEnt")
+	
+	Config:addSubMenu("Combo Settings", "ComboSettings")
+	Config.ComboSettings:addParam("UseQ", "Use Q in Combo ", SCRIPT_PARAM_ONOFF, true)
+	Config.ComboSettings:addParam("UseW", "Use W in Combo ", SCRIPT_PARAM_ONOFF, true)
+	Config.ComboSettings:addParam("UseE", "Use E in Combo ", SCRIPT_PARAM_ONOFF, true)
+	--Config.ComboSettings:addParam("autoIgnite", "Auto Ignite", SCRIPT_PARAM_ONOFF, true)
+	Config.ComboSettings:addParam("UseR", "Use R if killable", SCRIPT_PARAM_ONOFF, true)
+	
+	Config:addSubMenu("Harass Settings", "HarassSettings")
+	Config.HarassSettings:addParam("UseQ", "Use Q in Harass", SCRIPT_PARAM_ONOFF, true)
+	Config.HarassSettings:addParam("UseW", "Use W in Harass", SCRIPT_PARAM_ONOFF, false)
+	Config.HarassSettings:addParam("UseE", "Use E in Harass", SCRIPT_PARAM_ONOFF, true)
+	
+	Config:addSubMenu("LastHit Settings", "LastHitSettings")
+	Config.LastHitSettings:addParam("Steal", "Try to steal baron/dragon", SCRIPT_PARAM_ONOFF, true)
+
+	Config:addSubMenu("Laneclear Settings", "LaneSettings")
+	Config.LaneSettings:addParam("UseQ", "Use Q in Laneclear", SCRIPT_PARAM_ONOFF, true)
+	Config.LaneSettings:addParam("UseW", "Use W in Laneclear", SCRIPT_PARAM_ONOFF, false)
+	Config.LaneSettings:addParam("UseE", "Use E in Laneclear", SCRIPT_PARAM_ONOFF, true)
+	Config.LaneSettings:addParam("ECount", "Use E if minion count at least",SCRIPT_PARAM_SLICE, 2, 1, 5, 0)
+
+	Config:addSubMenu("Jungleclear Settings", "JungleSettings")
+	Config.JungleSettings:addParam("UseQ", "Use Q in Jungleclear", SCRIPT_PARAM_ONOFF, true)
+	Config.JungleSettings:addParam("UseW", "Use W in Jungleclear", SCRIPT_PARAM_ONOFF, true)
+	Config.JungleSettings:addParam("UseE", "Use E in Jungleclear", SCRIPT_PARAM_ONOFF, true)
+	Config.JungleSettings:addParam("FinishSmite", "Smite Secure Mobs", SCRIPT_PARAM_ONOFF, true)
+	
+	Config:addSubMenu("Spell Settings", "SpellSettings")
+	Config.SpellSettings:addParam("Space", "", 5, "")
+	Config.SpellSettings:addParam("AutoUlt", "Enable Auto Ultimate", SCRIPT_PARAM_ONOFF, true)
+	Config.SpellSettings:addParam("AutoUltMode", "Auto Ultimate Mode", SCRIPT_PARAM_LIST, 3, {"Enemy Count", "Only Killable", "Both"})
+	Config.SpellSettings:addParam("AutoEnemyRange", "Auto ultimate if in range: ", SCRIPT_PARAM_SLICE, 3, 1, 5, 0)
+	Config.SpellSettings:addParam("AutoKillable", "Auto ultimate if killable: ", SCRIPT_PARAM_SLICE, 1, 1, 5, 0)
+	
+	Config:addSubMenu("Misc Settings", "MiscSettings")
+	if DP ~= nil then
+		Config.MiscSettings:addParam("SelectPrediction", "Select Prediction", SCRIPT_PARAM_LIST, 1, {"VPrediction", "DivinePred"})
+		Config.MiscSettings:addParam("ExtraTime","DivinePred Extra Time", SCRIPT_PARAM_SLICE, 0.2, 0, 1, 1)
+	else
+		Config.MiscSettings:addParam("SelectPrediction", "Select Prediction", SCRIPT_PARAM_LIST, 1, {"VPrediction"})
+	end
+	Config.MiscSettings:addTS(ts)
+	
+	Config:addSubMenu("Draw Settings", "DrawSettings")
+	Config.DrawSettings:addParam("Enable", "Enable", SCRIPT_PARAM_ONOFF, true)
+	Config.DrawSettings:addParam("Lagfree", "Enable LagFree Circles", SCRIPT_PARAM_ONOFF, true)
+	Config.DrawSettings:addParam("Color", "Circles Color", SCRIPT_PARAM_COLOR, { 255, 255, 255, 255 })
+    Config.DrawSettings:addParam("Width", "LagFree Width", SCRIPT_PARAM_SLICE, 1, 1, 5)
+    Config.DrawSettings:addParam("Quality", "LagFree Quality", SCRIPT_PARAM_SLICE, 100, 0, 100)
+	Config.DrawSettings:addParam("Space","", 5, "")
+	Config.DrawSettings:addParam("DrawQ", "Draw Q Range", SCRIPT_PARAM_ONOFF, true)
+	Config.DrawSettings:addParam("DrawW", "Draw W Range", SCRIPT_PARAM_ONOFF, true)
+	Config.DrawSettings:addParam("DrawE", "Draw E Range", SCRIPT_PARAM_ONOFF, true)
+	Config.DrawSettings:addParam("DrawR", "Draw R Range", SCRIPT_PARAM_ONOFF, true)
+	
+	Config:addSubMenu("Key Settings", "KeySettings")
+	Config.KeySettings:addParam("Combo", "Combo Key", SCRIPT_PARAM_ONKEYDOWN, false, 32)
+	Config.KeySettings:addParam("Harass", "Harass Key", SCRIPT_PARAM_ONKEYDOWN, false, string.byte("C"))
+	Config.KeySettings:addParam("Clear", "Laneclear/Jungle Key", SCRIPT_PARAM_ONKEYDOWN, false, string.byte("V"))
+	Config.KeySettings:addParam("LastHit", "LastHit Key", SCRIPT_PARAM_ONKEYDOWN, false, string.byte("X"))
+	
+	DetectOrbwalker()
+
+	Config:addParam("Space","", 5, "")
+	Config:addParam("Version","Maokai - The king of the Ents"..version.." by Poisonshock", 5, "")
+
+	Config.KeySettings:permaShow("Combo")
+	Config.KeySettings:permaShow("Clear")
+	
+	
+	if myHero:GetSpellData(SUMMONER_1).name:lower():find("smite") then smiteslot = SUMMONER_1
+    elseif myHero:GetSpellData(SUMMONER_2).name:lower():find("smite") then smiteslot = SUMMONER_2
+    end
+
+	
+end
+
+function DetectOrbwalker()
+	if _G.Reborn_Initialised then
+        _G.AutoCarry.Keys:RegisterMenuKey(Config.KeySettings, "Combo", AutoCarry.MODE_AUTOCARRY)
+		_G.AutoCarry.Keys:RegisterMenuKey(Config.KeySettings, "Harass", AutoCarry.MODE_MIXEDMODE)
+		_G.AutoCarry.Keys:RegisterMenuKey(Config.KeySettings, "Clear", AutoCarry.MODE_LANECLEAR)
+        _G.AutoCarry.Keys:RegisterMenuKey(Config.KeySettings, "LastHit", AutoCarry.MODE_LASTHIT)
+        _G.AutoCarry.MyHero:AttacksEnabled(true)
+		print("<font color=\"#009900\">Poisonshock's</font> <font color=\"#FFFFFF\">Maokai - The king of the Ents - SAC:R Integrated</font>")
+	elseif _G.Reborn_Loaded then
+		DelayAction(DetectOrbwalker, 1)
+	elseif FileExist(LIB_PATH .. "SxOrbWalk.lua") then
+        require 'SxOrbWalk'
+		Config:addSubMenu("Orbwalker Settings", "orbwalker")
+		SxOrb:RegisterHotKey('fight',  Config.KeySettings, 'Combo')
+		SxOrb:RegisterHotKey('harass',  Config.KeySettings, 'Harass')
+		SxOrb:RegisterHotKey('laneclear',  Config.KeySettings, 'Clear')
+		SxOrb:RegisterHotKey('lasthit',  Config.KeySettings, 'LastHit')
+		SxOrb:LoadToMenu(Config.orbwalker, true)
+		SxOrb:EnableAttacks()
+	else
+		print("<font color=\"#009900\">Poisonshock's</font> <font color=\"#FFFFFF\">Maokai - King of the ents: No Orbwalker found.</font>")
+	end
+end
+
+function OnTick()
+	if Config.SpellSettings.AutoUlt then
+	CheckEnemyInRange()
+	CheckEnemyKillable()
+end
+-------------------------------------------------------------------------------
+  
+-------------------------------------------------------------------------
+
+	QREADY = (myHero:CanUseSpell(_Q) == READY)
+	WREADY = (myHero:CanUseSpell(_W) == READY)
+	EREADY = (myHero:CanUseSpell(_E) == READY)
+	RREADY = (myHero:CanUseSpell(_R) == READY)
+	if smiteslot~=nil then
+		SMITEREADY = (myHero:CanUseSpell(smiteslot) == READY)
+	end
+	
+	InRange = false
+	
+	if Config.KeySettings.Combo or Config.KeySettings.Harass then
+		ts:update()
+		Target = ts.target
+		Skills.SkillQ.range = 600
+	end
+	
+	if Config.KeySettings.Combo then
+		if Target and ValidTarget(Target) and not Target.dead then
+			if RREADY and Config.ComboSettings.UseR and GetDistance(Target) <= Skills.SkillR.range and Target.health < getDmg("R", Target, myHero) then CastSpell(_R) end
+			if QREADY and Config.ComboSettings.UseQ and GetDistance(Target) <= Skills.SkillQ.range then CastQ(Target) end
+			if WREADY and Config.ComboSettings.UseW and GetDistance(Target) <= Skills.SkillW.range then CastSpell(_W, Target) end
+			if EREADY and Config.ComboSettings.UseE and GetDistance(Target) <= Skills.SkillE.range then CastSpell(_E, Target) end
+		--	if Config.ComboSettings.autoIgnite then
+			--	AutoIgnite(Target) end
+			return
+		end
+	end
+	
+	if Config.KeySettings.Harass then
+		if Target and ValidTarget(Target) and not Target.dead then
+			if QREADY and Config.HarassSettings.UseQ and GetDistance(Target) <= Skills.SkillQ.range then CastQ(Target) end
+			if WREADY and Config.HarassSettings.UseW and GetDistance(Target) <= Skills.SkillW.range then CastSpell(_W, Target) end
+			if EREADY and Config.HarassSettings.UseE and GetDistance(Target) <= Skills.SkillE.range then CastSpell(_E, Target) end
+			return
+		end
+	end
+	
+	if Config.KeySettings.LastHit and Config.LastHitSettings.Steal then
+		Skills.SkillQ.range = 600
+		if smiteslot~=nil then
+			DragonSteal()
+		end
+	end
+	
+---------------------------------------
+--function AutoIgnite(Target)
+	--if ValidTarget(Target, Ignite.range) and unit.health <= 50 + (20 * myHero.level) then
+	--	if Ignite.ready then
+	--		CastSpell(Ignite.slot, unit)
+		--end
+		--end
+--end
+------------------------------------------------
+
+	if Config.KeySettings.Clear then
+		Skills.SkillQ.range = 600
+		JungleMinions:update()
+		Target = nil
+	 	for i, minion in pairs(JungleMinions.objects) do
+			if ValidTarget(minion) and not minion.dead then
+				if Target == nil then
+					Target = minion
+				elseif GetDistance(minion) < GetDistance(Target) then
+					Target = minion
+				end
+			end
+		end
+		if Target ~= nil and ValidTarget(Target) then
+			local smiteDmg = math.max(20*myHero.level+370,30*myHero.level+330,40*myHero.level+240,50*myHero.level+100)
+			if Config.JungleSettings.FinishSmite and smiteslot ~= nil and SMITEREADY and ValidTarget(Target, Skills.Smite.range) and CheckBigMinion(Target) and Target.health < smiteDmg then CastSpell(smiteslot, Target) return end
+			if QREADY and Config.JungleSettings.UseQ and GetDistance(Target) <= Skills.SkillQ.range then CastQ(Target) return end
+			if WREADY and Config.JungleSettings.UseW and GetDistance(Target) <= Skills.SkillW.range then CastSpell(_W, Target) end
+			if EREADY and Config.JungleSettings.UseE and GetDistance(Target) <= Skills.SkillE.range then CastSpell(_E, Target) return end
+		end
+		
+		EnemyMinions:update()
+		local minionInERange = 0
+	 	for i, minion in pairs(EnemyMinions.objects) do
+			if ValidTarget(minion) and not minion.dead then
+				if GetDistance(minion) < Skills.SkillE.range then minionInERange = minionInERange + 1 end
+				if Target == nil then
+					Target = minion
+				elseif GetDistance(minion) < GetDistance(Target) then
+					Target = minion
+				end
+			end
+		end
+		
+		if Target ~= nil and ValidTarget(Target) then
+			if QREADY and Config.LaneSettings.UseQ and GetDistance(Target) <= Skills.SkillQ.range then CastQ(Target) return end
+			if WREADY and Config.LaneSettings.UseW and GetDistance(Target) <= Skills.SkillW.range then CastSpell(_W, Target) end
+			if EREADY and Config.LaneSettings.UseE and minionInERange >= Config.LaneSettings.ECount then CastSpell(_E, Target) return
+			end
+		end
+	end
+	
+	
+end
+
+function CheckBigMinion(minion)
+	if minion and ValidTarget(minion, Skills.SkillW.range) then
+		if minion.charName:lower():find("blue") and not minion.charName:lower():find("mini") then return true end
+		if minion.charName:lower():find("red") and not minion.charName:lower():find("mini") then return true end
+		if minion.charName:lower():find("murkwolf") and not minion.charName:lower():find("mini") then return true end
+		if minion.charName:lower():find("razorbeak") and not minion.charName:lower():find("mini") then return true end
+		if minion.charName:lower():find("krug") and not minion.charName:lower():find("mini") then return true end
+		if minion.charName:lower():find("gromp") then return true end
+		if minion.charName:lower():find("crab") then return true end
+		if minion.charName:lower():find("dragon") then return true end
+		if minion.charName:lower():find("baron") then return true end
+	end
+	return false
+end
+
+function OnDraw()
+	if Config.DrawSettings.Enable and not myHero.dead then
+		if Config.DrawSettings.Lagfree then
+			if Config.DrawSettings.DrawQ and QREADY then DrawCircle2(myHero.x, myHero.y, myHero.z, Skills.SkillQ.range, ARGB(Config.DrawSettings.Color[1], Config.DrawSettings.Color[2], Config.DrawSettings.Color[3], Config.DrawSettings.Color[4]), Config.DrawSettings.Width, Config.DrawSettings.Quality) end
+			if Config.DrawSettings.DrawW and WREADY then DrawCircle2(myHero.x, myHero.y, myHero.z, Skills.SkillW.range, ARGB(Config.DrawSettings.Color[1], Config.DrawSettings.Color[2], Config.DrawSettings.Color[3], Config.DrawSettings.Color[4]), Config.DrawSettings.Width, Config.DrawSettings.Quality) end
+			if Config.DrawSettings.DrawE and EREADY then DrawCircle2(myHero.x, myHero.y, myHero.z, Skills.SkillE.range, ARGB(Config.DrawSettings.Color[1], Config.DrawSettings.Color[2], Config.DrawSettings.Color[3], Config.DrawSettings.Color[4]), Config.DrawSettings.Width, Config.DrawSettings.Quality) end
+			if Config.DrawSettings.DrawR and RREADY then DrawCircle2(myHero.x, myHero.y, myHero.z, Skills.SkillR.range, ARGB(Config.DrawSettings.Color[1], Config.DrawSettings.Color[2], Config.DrawSettings.Color[3], Config.DrawSettings.Color[4]), Config.DrawSettings.Width, Config.DrawSettings.Quality) end
+		else
+			if Config.DrawSettings.DrawQ and QREADY then DrawCircle(myHero.x, myHero.y, myHero.z, Skills.SkillQ.range, ARGB(Config.DrawSettings.Color[1], Config.DrawSettings.Color[2], Config.DrawSettings.Color[3], Config.DrawSettings.Color[4])) end
+			if Config.DrawSettings.DrawW and WREADY then DrawCircle(myHero.x, myHero.y, myHero.z, Skills.SkillW.range, ARGB(Config.DrawSettings.Color[1], Config.DrawSettings.Color[2], Config.DrawSettings.Color[3], Config.DrawSettings.Color[4])) end
+			if Config.DrawSettings.DrawE and EREADY then DrawCircle(myHero.x, myHero.y, myHero.z, Skills.SkillE.range, ARGB(Config.DrawSettings.Color[1], Config.DrawSettings.Color[2], Config.DrawSettings.Color[3], Config.DrawSettings.Color[4])) end
+			if Config.DrawSettings.DrawR and RREADY then DrawCircle(myHero.x, myHero.y, myHero.z, Skills.SkillR.range, ARGB(Config.DrawSettings.Color[1], Config.DrawSettings.Color[2], Config.DrawSettings.Color[3], Config.DrawSettings.Color[4])) end
+		end
+	end
+end
+
+
+
+function CastQ(target)
+	if QREADY and target and ValidTarget(target, Skills.SkillQ.range) and ValidRequest() then
+		if Config.MiscSettings.SelectPrediction == 1 then
+			local CastPosition,  HitChance,  Position = VP:GetLineCastPosition(target, Skills.SkillQ.delay, Skills.SkillQ.width, Skills.SkillQ.range, Skills.SkillQ.speed, myHero, Skills.SkillQ.collision)
+           	if HitChance >= 2 then
+				CastSpell(_Q, CastPosition.x, CastPosition.z)
+			end
+		elseif Config.MiscSettings.SelectPrediction == 2 then
+			local col = Skills.SkillQ.collision and 0
+			local lineal = LineSS(Skills.SkillQ.speed, Skills.SkillQ.range, Skills.SkillQ.width, Skills.SkillQ.delay * 1000, col)
+			if lineal~=nil then
+                local unit = DPTarget(target)
+				local state, CastPosition, perc = DP:predict(unit, lineal, 2)
+				if state == SkillShot.STATUS.SUCCESS_HIT then
+					CastSpell(_Q, CastPosition.x, CastPosition.z)
+				end
+			end
+		end
+	end
+end
+
+function TimeRequest()
+    if Config.MiscSettings.SelectPrediction == 1 then
+        return 0.06
+    elseif Config.MiscSettings.SelectPrediction == 2 then
+        return Config.MiscSettings.ExtraTime or 0.2
+    end
+end
+
+function ValidRequest()
+    if os.clock() - LastRequest < TimeRequest() then
+        return false
+    else
+        LastRequest = os.clock()
+        return true
+    end
+end
+
+function ObjectInArea(range, objects)
+    for i, object in ipairs(objects) do
+        if ValidTarget(object, range) then return true end
+    end
+	return false
+end
+
+
+
+function CheckEnemyInRange()
+	if not (Config.SpellSettings.AutoUltMode == 1 or 3) or not RREADY then return end
+	local count = 0
+	for _, enemy in ipairs(GetEnemyHeroes()) do
+		if enemy and ValidTarget(enemy) and not enemy.dead and enemy.visible and GetDistance(enemy) < Skills.SkillR.range-50 then
+			count = count + 1
+		end
+	end
+	if count >= Config.SpellSettings.AutoEnemyRange then
+		CastSpell(_R)
+	end
+end
+
+function CheckEnemyKillable()
+	if not (Config.SpellSettings.AutoUltMode == 2 or 3) or not RREADY then return end
+	local count  = 0
+	for _, enemy in ipairs(GetEnemyHeroes()) do
+		if enemy and ValidTarget(enemy) and not enemy.dead and enemy.visible and GetDistance(enemy) < Skills.SkillR.range-50 and enemy.health < getDmg("R", enemy, myHero) then
+			count = count + 1
+		end
+	end
+	if count >= Config.SpellSettings.AutoKillable then
+		CastSpell(_R)
+	end
+end
+
+function DragonSteal()
+    local target = nil
+    for i, minion in pairs(JungleMinions.objects) do
+        if ValidTarget(minion) and minion.visible and minion.health > 0 and minion.charName:lower():find("dragon") then
+            target = minion
+        elseif ValidTarget(minion) and minion.visible and minion.health > 0 and minion.charName:lower():find("worm") then
+            target = minion
+        end
+    end
+    if target~= nil and ValidTarget(target) then
+        local smiteDmg = 0
+		local qDmg = 0
+		local totalDamage = 0
+		if QREADY then qDmg = getDmg("Q", target, myHero) end
+        if SMITEREADY then smiteDmg = SmiteDmg() end
+		totalDamage = smiteDmg + qDmg
+        if totalDamage >= target.health then
+			if ValidTarget(target, Skills.SkillQ.range) then CastQ(target) end
+            if ValidTarget(target, Skills.Smite.range) then CastSpell(smiteslot, target) end
+		end
+	end
+end
+
+function SmiteDmg()
+    if not SMITEREADY then return 0 end
+    return math.max(20 * myHero.level + 370, 30 * myHero.level + 330, 40 * myHero.level + 240, 50 * myHero.level + 100)
+end
+
+function DrawCircle2(x, y, z, radius, color, width, quality) --vardash LFC
+	local vPos1 = Vector(x, y, z)
+	local vPos2 = Vector(cameraPos.x, cameraPos.y, cameraPos.z)
+	local tPos = vPos1 - (vPos1 - vPos2):normalized() * radius
+	local sPos = WorldToScreen(D3DXVECTOR3(tPos.x, tPos.y, tPos.z))
+	if OnScreen({x = sPos.x, y = sPos.y }, {x = sPos.x, y = sPos.y }) then
+		DrawCircleNextLvl(x, y, z, radius, width, color, 75 + 2000 * (100 - quality)/1000) 
+	end
+end
+
+function DrawCircleNextLvl(x, y, z, radius, width, color, chordlength)
+	radius = radius or 300
+	quality = math.max(8, round(180 / math.deg((math.asin((chordlength / (2 * radius)))))))
+	quality = 2 * math.pi / quality
+	radius = radius * .92
+	local points = {}
+	for theta = 0, 2 * math.pi + quality, quality do
+		local c = WorldToScreen(D3DXVECTOR3(x + radius * math.cos(theta), y, z - radius * math.sin(theta)))
+		points[#points + 1] = D3DXVECTOR2(c.x, c.y)
+	end
+	DrawLines2(points, width or 1, color or 4294967295)
+end
+
+function round(num) 
+  if num >= 0 then return math.floor(num+.5) else return math.ceil(num-.5) end
+end
